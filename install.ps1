@@ -162,7 +162,13 @@ if (-not $SkipApplications) {
     Write-Step 'Instalando ferramentas e aplicativos'
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if (-not $winget) { throw 'O Windows Package Manager (winget) não está disponível. Instale/atualize o App Installer pela Microsoft Store e execute novamente.' }
+    $installedPackages = & $winget.Source list --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Não consegui ler a lista local do WinGet; vou tentar instalar os pacotes normalmente.'; $installedPackages = '' }
     foreach ($id in $wingetIds) {
+        if ($installedPackages -match "(?m)\b$([regex]::Escape($id))\b") {
+            Write-Host "$id já instalado; mantendo a versão atual."
+            continue
+        }
         Write-Host "Instalando/confirmando $id..."
         & $winget.Source install --id $id --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
         if ($LASTEXITCODE -ne 0) { Write-Warning "$id não instalou (código $LASTEXITCODE)."; $script:failures.Add("winget $id") }
