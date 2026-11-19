@@ -80,21 +80,14 @@ function Update-JsonMcpConfig([string]$file, [hashtable]$servers) {
     } else { $original = ''; $config = [pscustomobject]@{} }
     if (-not $config.PSObject.Properties['mcpServers']) { $config | Add-Member -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{}) }
     foreach ($requestedName in $servers.Keys) {
-        $name = $requestedName
         $entry = $servers[$requestedName]
-        if ($config.mcpServers.PSObject.Properties[$name]) {
-            $existing = $config.mcpServers.$name
-            if (($existing | ConvertTo-Json -Depth 20 -Compress) -eq ($entry | ConvertTo-Json -Depth 20 -Compress)) { continue }
-            $name = "${requestedName}_aincrad"
-            if ($config.mcpServers.PSObject.Properties[$name]) {
-                $existing = $config.mcpServers.$name
-                if (($existing | ConvertTo-Json -Depth 20 -Compress) -eq ($entry | ConvertTo-Json -Depth 20 -Compress)) { continue }
-                $suffix = 2
-                while ($config.mcpServers.PSObject.Properties["${requestedName}_aincrad$suffix"]) { $suffix++ }
-                $name = "${requestedName}_aincrad$suffix"
-            }
+        $existingProperty = $config.mcpServers.PSObject.Properties[$requestedName]
+        if ($existingProperty) {
+            if (($existingProperty.Value | ConvertTo-Json -Depth 20 -Compress) -eq ($entry | ConvertTo-Json -Depth 20 -Compress)) { continue }
+            $existingProperty.Value = $entry
+        } else {
+            $config.mcpServers | Add-Member -NotePropertyName $requestedName -NotePropertyValue $entry
         }
-        $config.mcpServers | Add-Member -NotePropertyName $name -NotePropertyValue $entry
     }
     if ($original -and ((ConvertFrom-Json $original | ConvertTo-Json -Depth 60 -Compress) -eq ($config | ConvertTo-Json -Depth 60 -Compress))) { return }
     if ($original) { Copy-Item -LiteralPath $file -Destination "$file.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
@@ -108,12 +101,51 @@ function ConvertTo-TomlString([string]$value) {
 function Add-CodexMcp([string]$file, [string]$name, [string]$vault) {
     $utf8 = New-Object Text.UTF8Encoding($false)
     $original = if (Test-Path -LiteralPath $file) { [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8) } else { '' }
-    if ($original -match "(?m)^\[mcp_servers\.$([regex]::Escape($name))\]") { return }
-    $block = "`n[mcp_servers.$name]`ncommand = 'npx'`nargs = ['-y', '@bitbonsai/mcpvault@0.18.4', $(ConvertTo-TomlString $vault)]`n"
+    $block = "[mcp_servers.$name]`ncommand = 'npx'`nargs = ['-y', '@bitbonsai/mcpvault@0.18.4', $(ConvertTo-TomlString $vault)]`n"
+    $pattern = "(?ms)^\[mcp_servers\.$([regex]::Escape($name))\]\r?\n.*?(?=^\[|\z)"
+    $match = [regex]::Match($original, $pattern)
+    if ($match.Success) {
+        if ($match.Value.Trim() -eq $block.Trim()) { return }
+        $updated = $original.Substring(0, $match.Index) + $block + $original.Substring($match.Index + $match.Length)
+    } else { $updated = $original.TrimEnd() + "`n`n" + $block }
     if ($original) { Copy-Item -LiteralPath $file -Destination "$file.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
-    [IO.File]::WriteAllText($file, ($original + $block), $utf8)
+    [IO.File]::WriteAllText($file, $updated, $utf8)
     Write-Host "MCP $name configurado no Codex."
+}
+function Register-ObsidianVaults([string]$primaryVault, [string]$secondaryVault) {
+    $file = Join-Path $env:APPDATA 'obsidian\obsidian.json'
+    $utf8 = New-Object Text.UTF8Encoding($false)
+    if (Test-Path -LiteralPath $file) {
+        $original = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)
+        try { $config = $original | ConvertFrom-Json } catch { throw "JSON inválido em $file; não alterei o arquivo." }
+    } else { $original = ''; $config = [pscustomobject]@{} }
+    if (-not $config.PSObject.Properties['vaults']) { $config | Add-Member -NotePropertyName vaults -NotePropertyValue ([pscustomobject]@{}) }
+    $changed = $false
+    foreach ($path in @($primaryVault, $secondaryVault)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) { continue }
+        $fullPath = (Get-Item -LiteralPath $path).FullName
+        $isPrimary = $fullPath -ieq $primaryVault
+        $existing = $config.vaults.PSObject.Properties | Where-Object { $_.Value.path -ieq $fullPath } | Select-Object -First 1
+        if ($existing) {
+            if (-not $existing.Value.PSObject.Properties['open'] -or [bool]$existing.Value.open -ne $isPrimary) {
+                $existing.Value | Add-Member -NotePropertyName open -NotePropertyValue $isPrimary -Force
+                $changed = $true
+            }
+            continue
+        }
+        $md5 = [Security.Cryptography.MD5]::Create()
+        try { $id = [BitConverter]::ToString($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($fullPath))).Replace('-', '').ToLowerInvariant() } finally { $md5.Dispose() }
+        while ($config.vaults.PSObject.Properties[$id]) { $id = [Guid]::NewGuid().ToString('N') }
+        $entry = [pscustomobject]@{ path = $fullPath; ts = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); open = $isPrimary }
+        $config.vaults | Add-Member -NotePropertyName $id -NotePropertyValue $entry
+        $changed = $true
+    }
+    if (-not $changed) { Write-Host 'Vaults do Obsidian já estão registrados.'; return }
+    if ($original) { Copy-Item -LiteralPath $file -Destination "$file.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $file) | Out-Null
+    [IO.File]::WriteAllText($file, ($config | ConvertTo-Json -Depth 60), $utf8)
+    Write-Host "Vaults do Obsidian registrados em $file"
 }
 
 if ($PlanOnly) {
@@ -162,9 +194,10 @@ if ($LASTEXITCODE -ne 0) {
 & gh auth setup-git
 
 $dataRoot = if (Test-Path -LiteralPath 'D:\') { 'D:\Aincrad' } else { Join-Path $HOME 'Documents\Aincrad' }
-$vaultPath = Install-PrivateRepo $vaultRepo (Join-Path $dataRoot 'Alice Síntese')
+$vaultPath = Install-PrivateRepo $vaultRepo (Join-Path $HOME 'Documents\Alice Síntese')
 $backupPath = Install-PrivateRepo $backupRepo (Join-Path $vaultPath 'Configuração e backup')
 $snapshotPath = Copy-Snapshot (Join-Path $backupPath 'Aincrad') (Join-Path $dataRoot 'Aincrad')
+Register-ObsidianVaults $vaultPath $snapshotPath
 
 if (-not $SkipProjectClone) {
     Write-Step 'Restaurando o projeto Underworld e o grafo Graphify'
@@ -196,8 +229,10 @@ if (Test-Path -LiteralPath $legacyInstaller) {
 
 Write-Step 'Instalando ai-memory e hooks nos agentes'
 try {
-    $aiMemoryInstall = Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/akitaonrails/ai-memory/releases/latest/download/install.ps1' -TimeoutSec 60
-    Invoke-Expression $aiMemoryInstall.Content
+    $aiMemoryInstallerPath = Join-Path $env:TEMP 'aincrad-ai-memory-install.ps1'
+    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/akitaonrails/ai-memory/releases/latest/download/install.ps1' -OutFile $aiMemoryInstallerPath -TimeoutSec 60
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $aiMemoryInstallerPath
+    if ($LASTEXITCODE -ne 0) { throw "O instalador do ai-memory saiu com código $LASTEXITCODE." }
     Refresh-UserPath
     if (Get-Command ai-memory -ErrorAction SilentlyContinue) {
         & ai-memory setup --yes --language pt-BR --agent claude-code --agent codex --agent gemini-cli --agent antigravity-cli --agent kimi-code
