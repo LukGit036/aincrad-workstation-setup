@@ -7,8 +7,10 @@ Instalador local para preparar um novo computador Windows com os programas de de
 Abra o PowerShell e execute:
 
 ```powershell
-irm https://raw.githubusercontent.com/LukGit036/aincrad-workstation-setup/main/install.ps1 | iex
+$ErrorActionPreference='Stop'; $p=Join-Path $env:TEMP 'aincrad-workstation-install.ps1'; Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/LukGit036/aincrad-workstation-setup/main/install.ps1' -OutFile $p; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
 ```
+
+O arquivo é baixado e executado como um script `.ps1`. Não use `irm ... | iex`: o instalador tem parâmetros de script (`CmdletBinding`/`param`) e o `Invoke-Expression` não os interpreta corretamente.
 
 O instalador instalará VS Code, Git, GitHub CLI, Node.js LTS, Python, uv, FFmpeg, Streamlink, Obsidian, Antigravity, Claude, Gemini CLI, Codex CLI e Kimi. Depois, abrirá a autenticação do GitHub para restaurar os repositórios privados do usuário.
 
