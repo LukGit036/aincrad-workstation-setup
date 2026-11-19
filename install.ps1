@@ -229,11 +229,13 @@ if (Test-Path -LiteralPath $legacyInstaller) {
 
 Write-Step 'Instalando ai-memory e hooks nos agentes'
 try {
-    $aiMemoryInstallerPath = Join-Path $env:TEMP 'aincrad-ai-memory-install.ps1'
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/akitaonrails/ai-memory/releases/latest/download/install.ps1' -OutFile $aiMemoryInstallerPath -TimeoutSec 60
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $aiMemoryInstallerPath
-    if ($LASTEXITCODE -ne 0) { throw "O instalador do ai-memory saiu com código $LASTEXITCODE." }
-    Refresh-UserPath
+    if (-not (Get-Command ai-memory -ErrorAction SilentlyContinue)) {
+        $aiMemoryInstallerPath = Join-Path $env:TEMP 'aincrad-ai-memory-install.ps1'
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/akitaonrails/ai-memory/releases/latest/download/install.ps1' -OutFile $aiMemoryInstallerPath -TimeoutSec 60
+        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $aiMemoryInstallerPath
+        if ($LASTEXITCODE -ne 0) { throw "O instalador do ai-memory saiu com código $LASTEXITCODE." }
+        Refresh-UserPath
+    } else { Write-Host 'ai-memory já instalado; vou reutilizar a instalação local.' }
     if (Get-Command ai-memory -ErrorAction SilentlyContinue) {
         & ai-memory setup --yes --language pt-BR --agent claude-code --agent codex --agent gemini-cli --agent antigravity-cli --agent kimi-code
         if ($LASTEXITCODE -ne 0) { $script:failures.Add('ai-memory setup/hooks') }
