@@ -1,0 +1,7 @@
+# Nenhuma credencial ou segredo local deve ser versionado.
+.env
+.env.*
+*.dpapi
+*.pem
+*.key
+secrets/
