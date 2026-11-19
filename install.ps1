@@ -62,10 +62,10 @@ function Install-PrivateRepo([string]$repo, [string]$desired) {
 }
 function Copy-Snapshot([string]$source, [string]$desired) {
     if (-not (Test-Path -LiteralPath $source -PathType Container)) { Write-Warning "Snapshot não encontrado: $source"; $script:failures.Add("Snapshot $source"); return $desired }
-    $target = Get-SafeTarget $desired
+    $target = $desired
     if (Test-Path -LiteralPath $target) {
         $children = @(Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue)
-        if ($children.Count -gt 0) { Write-Host "Mantive a pasta existente e vou usar o snapshot em: $target"; return $target }
+        if ($children.Count -gt 0) { Write-Host "Mantive o cofre Aincrad existente sem sobrescrever arquivos: $target"; return $target }
     }
     New-Item -ItemType Directory -Force -Path $target | Out-Null
     Get-ChildItem -LiteralPath $source -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force }
