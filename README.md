@@ -24,6 +24,7 @@ Baixe este repositório e rode `install.ps1 -PlanOnly`. O modo de plano lista o 
 
 - Este repositório é público e contém somente o instalador. Cofres, projeto e automações ficam em repositórios privados do GitHub.
 - A chave da NVIDIA, tokens, sessões do navegador e logins não são publicados nem copiados do PC antigo. O instalador permite informar uma chave NVIDIA no computador novo e salvá-la protegida pelo DPAPI do Windows para o usuário local.
+- O token local do ai-memory é lido do arquivo criado pelo próprio serviço e configurado como variável de ambiente do usuário do Windows para autenticar os MCPs; ele não é escrito no repositório ou no cofre.
 - O usuário precisa autenticar novamente no GitHub e entrar nas contas das ferramentas de IA no novo computador.
 - O instalador preserva pastas existentes; quando encontra conteúdo sem Git no destino, usa uma nova pasta com sufixo de restauração.
 - Alguns pacotes do WinGet podem variar conforme a versão do Windows. O instalador continua após uma falha e lista no final os itens que precisam de nova tentativa.

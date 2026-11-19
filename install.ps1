@@ -247,6 +247,16 @@ try {
         if ($LASTEXITCODE -ne 0) { $script:failures.Add('ai-memory setup/hooks') }
         & ai-memory install-hooks --agent claude-code --no-capture-prompts --apply
         if ($LASTEXITCODE -ne 0) { $script:failures.Add('ai-memory hook privado para Claude Code') }
+        $aiMemoryTokenPath = Join-Path $env:LOCALAPPDATA 'ai-memory\auth-tokens\default'
+        if (Test-Path -LiteralPath $aiMemoryTokenPath) {
+            $aiMemoryToken = [IO.File]::ReadAllText($aiMemoryTokenPath, [Text.Encoding]::UTF8).Trim()
+            if ($aiMemoryToken) {
+                [Environment]::SetEnvironmentVariable('AI_MEMORY_AUTH_TOKEN', $aiMemoryToken, 'User')
+                $env:AI_MEMORY_AUTH_TOKEN = $aiMemoryToken
+                Write-Host 'Token MCP do ai-memory configurado no ambiente deste usuário do Windows.'
+            } else { $script:failures.Add('ai-memory: token local vazio') }
+            $aiMemoryToken = $null
+        } else { $script:failures.Add('ai-memory: arquivo local de token ausente') }
     } else { $script:failures.Add('ai-memory CLI não apareceu no PATH') }
 } catch { Write-Warning "ai-memory não foi concluído: $($_.Exception.Message)"; $script:failures.Add('ai-memory') }
 
